@@ -1,0 +1,53 @@
+.gcdv-scrollbar.gcdv-hover>.gcdv-scrollbar-trackX,
+.gcdv-scrollbar.gcdv-hover>.gcdv-scrollbar-trackY {
+    background-color: transparent;
+    opacity: .6;
+}
+
+.gcdv-scrollbar.gcdv-scrolling-x>.gcdv-scrollbar-trackX,
+.gcdv-scrollbar>.gcdv-scrollbar-trackX:hover {
+    height: 11px;
+    background-color: #eee;
+    opacity: .9;
+}
+
+.gcdv-scrollbar.gcdv-scrolling-y>.gcdv-scrollbar-trackY,
+.gcdv-scrollbar>.gcdv-scrollbar-trackY:hover {
+    width: 11px;
+    background-color: #eee;
+    opacity: .9;
+}
+
+.gcdv-scrollbar-trackX {
+    opacity: 0;
+    height: 8px;
+    border-radius: 4px;
+}
+
+.gcdv-scrollbar-thumbX {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+
+    border-radius: 6px;
+    background-color: #aaa;
+    transition: background-color .5s linear, height .5s ease-in-out;
+    -webkit-transition: background-color .5s linear, height .5s ease-in-out;
+}
+
+.gcdv-scrollbar-trackY {
+    opacity: 0;
+    width: 8px;
+    border-radius: 6px;
+}
+
+.gcdv-scrollbar-thumbY {
+    position: absolute;
+    left: 1px;
+    right: 1px;
+
+    border-radius: 6px;
+    background-color: #aaa;
+    transition: background-color .5s linear, width .5s ease-in-out;
+    -webkit-transition: background-color .5s linear, width .5s ease-in-out;
+}
