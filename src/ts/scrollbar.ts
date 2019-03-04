@@ -334,11 +334,7 @@ module dv {
                 return;
             }
     
-            const eMatches = Element && (
-                   Element.prototype.matches 
-                || Element.prototype.webkitMatchesSelector 
-                || Element.prototype.msMatchesSelector);
-        
+            const eMatches = Element && (Element.prototype.matches || Element.prototype.webkitMatchesSelector); 
             let scrollbarFocused = eMatches.call(this.__thumbX, ':focus') || eMatches.call(this.__thumbY, ':focus');
             let hostHovered = this.__scrollbar.classList.contains('gcdv-hover');
             if(!hostHovered && !scrollbarFocused) { 
@@ -476,19 +472,19 @@ module dv {
             let deltaX = 0;
             let deltaY = 0;
 
-            // Old school scrollwheel delta
-            if ('detail' in orgEvent) {
-                deltaY = orgEvent.detail * -1;
-            }
-            if ('wheelDelta' in orgEvent) {
-                deltaY = orgEvent.wheelDelta;
-            }
-            if ('wheelDeltaY' in orgEvent) {
-                deltaY = orgEvent.wheelDeltaY;
-            }
-            if ('wheelDeltaX' in orgEvent) {
-                deltaX = orgEvent.wheelDeltaX * -1;
-            }
+            // // Old school scrollwheel delta
+            // if ('detail' in orgEvent) {
+            //     deltaY = orgEvent.detail * -1;
+            // }
+            // if ('wheelDelta' in orgEvent) {
+            //     deltaY = orgEvent.wheelDelta;
+            // }
+            // if ('wheelDeltaY' in orgEvent) {
+            //     deltaY = orgEvent.wheelDeltaY;
+            // }
+            // if ('wheelDeltaX' in orgEvent) {
+            //     deltaX = orgEvent.wheelDeltaX * -1;
+            // }
 
             // New school wheel delta (wheel event)
             if ('deltaY' in orgEvent) {

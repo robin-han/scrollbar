@@ -1,0 +1,22 @@
+{
+  "name": "scrollbar",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robin-han/scrollbar.git"
+  },
+  "author": "robin",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/robin-han/scrollbar/issues"
+  },
+  "homepage": "https://github.com/robin-han/scrollbar#readme",
+  "devDependencies": {
+    "typescript": "^3.3.3333"
+  }
+}
