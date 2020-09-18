@@ -1,17 +1,19 @@
-module dv {
+namespace dv {
     'use strict';
 
-    //#region Scrollbar
-    let TOUCH_TYPES = (function() {
+    /**
+     * @hidden
+     */
+    const TOUCH_TYPES: { TOUCH_START: string, TOUCH_MOVE: string, TOUCH_END: string } = (() => {
         let TOUCH_START: string;
         let TOUCH_MOVE: string;
         let TOUCH_END: string;
-        
-        if (typeof window !== 'undefined' && ('ontouchstart' in window || ((<any>window).DocumentTouch && document instanceof (<any>window).DocumentTouch))) {
+
+        if (typeof window !== 'undefined' && (hasProperty(window, 'ontouchstart') || ((<any>window).DocumentTouch && document instanceof (<any>window).DocumentTouch))) {
             TOUCH_START = 'touchstart';
             TOUCH_MOVE = 'touchmove';
             TOUCH_END = 'touchend';
-        } else if (typeof navigator !== 'undefined' && navigator.msMaxTouchPoints) { //support ie touch
+        } else if (typeof navigator !== 'undefined' && navigator.msMaxTouchPoints) { // support ie touch
             if ((<any>window).MSPointerEvent) {
                 TOUCH_START = 'MSPointerDown';
                 TOUCH_MOVE = 'MSPointerMove';
@@ -23,11 +25,22 @@ module dv {
             }
         }
 
-        return {TOUCH_START: TOUCH_START, TOUCH_MOVE: TOUCH_MOVE, TOUCH_END: TOUCH_END};
+        return { TOUCH_START: TOUCH_START, TOUCH_MOVE: TOUCH_MOVE, TOUCH_END: TOUCH_END };
+
+        function hasProperty(obj: any, key: string, inherit: boolean = true): boolean {
+            if (!inherit) {
+                return obj.hasOwnProperty(key);
+            }
+            /* tslint:disable:cs-no-in */
+            return (key in obj);
+            /* tslint:enable:cs-no-in */
+        }
     })();
-    let SCROLLBAR_EVENTS = {
-        SCROLLED: 'Scrolled'
-    };
+
+    /**
+     * @hidden
+     */
+    type ElementMatchesCallback = (selectors: string) => boolean;
 
     /**
      * @hidden
@@ -38,7 +51,7 @@ module dv {
          * Horizontal scroll.
          */
         HorizontalScroll = 0,
-        
+
         /**
          * Vertical scroll.
          */
@@ -50,13 +63,15 @@ module dv {
      * Represents the scrollbar.
      */
     export class Scrollbar {
+        private static readonly __scrolled: string = 'Scrolled';
+
         private __host: HTMLElement;
-        private __options: any;
-        private __xscroll: boolean;
-        private	__yscroll: boolean;
-        private __event: Event;
+        private __option: any;
+        private __event: EventManager;
         private __touchIntervalId: any;
         private __observer: any;
+        private __scrollXTimeoutId: any;
+        private __scrollYTimeoutId: any;
 
         private __containerLeft: number;
         private __containerTop: number;
@@ -77,23 +92,23 @@ module dv {
         private __trackYHeight: number;
         private __trackXMarginWidth: number;
         private __trackXWidth: number;
-        private __scrollbar: HTMLElement;
+        public __scrollbar: HTMLElement;
         private __trackX: HTMLElement;
         private __thumbX: HTMLElement;
         private __trackY: HTMLElement;
         private __thumbY: HTMLElement;
-            
-        constructor(host: HTMLElement, options: any) {
-            options = options || {};
+
+        constructor(host: HTMLElement, option: any) {
+            option = option || {};
 
             this.__host = host;
-            this.__options = options;
+            this.__option = option;
 
-            this.__xscroll = (options.xscroll === false ? false: true);
-            this.__yscroll = (options.yscroll === false ? false: true);
-            this.__event = new Event();
+            this.__event = new EventManager();
             this.__touchIntervalId = null;
             this.__observer = null;
+            this.__scrollXTimeoutId = null;
+            this.__scrollYTimeoutId = null;
 
             this.__containerLeft = 0;
             this.__containerTop = 0;
@@ -115,23 +130,23 @@ module dv {
             this.__trackXMarginWidth = 0;
             this.__trackXWidth = 0;
 
-            //create dv-scrollbar
-            this.__scrollbar = this._createElement('div', 'gcdv-scrollbar', {
+            // create dv-scrollbar
+            this.__scrollbar = this._createElement('div', 'dv-scrollbar', {
                 width: 0,
                 height: 0,
                 position: 'relative'
             });
 
-            this.__trackX = this._createElement('div', 'gcdv-scrollbar-trackX', {
+            this.__trackX = this._createElement('div', 'dv-scrollbar-trackX', {
                 position: 'absolute'
             });
-            this.__thumbX = this._createElement('div', 'gcdv-scrollbar-thumbX');
+            this.__thumbX = this._createElement('div', 'dv-scrollbar-thumbX');
             this.__trackX.appendChild(this.__thumbX);
 
-            this.__trackY = this._createElement('div', 'gcdv-scrollbar-trackY', {
+            this.__trackY = this._createElement('div', 'dv-scrollbar-trackY', {
                 position: 'absolute'
             });
-            this.__thumbY = this._createElement('div', 'gcdv-scrollbar-thumbY');
+            this.__thumbY = this._createElement('div', 'dv-scrollbar-thumbY');
             this.__trackY.appendChild(this.__thumbY);
 
             this.__scrollbar.appendChild(this.__trackX);
@@ -142,15 +157,15 @@ module dv {
             this._bindEvents();
         }
 
-        scrollLeft(): number {
+        public scrollLeft(): number {
             return this.__scrollLeft;
         }
 
-        scrollTop(): number {
+        public scrollTop(): number {
             return this.__scrollTop;
         }
 
-        dispose() {
+        public dispose(): void {
             if (this.__observer) {
                 this.__observer.disconnect();
             }
@@ -158,16 +173,19 @@ module dv {
             this.__host.removeChild(this.__scrollbar);
         }
 
-        update():void {
-            let host = this.__host;
+        public update(option?: any): void {
+            const host: HTMLElement = this.__host;
+            if (option) {
+                this._extend(this.__option, option);
+            }
+            option = this.__option;
 
-            let containerRect;
-			let contentSize;
-			let scrollRange = this.__options.scrollRange;
-			if (scrollRange) {
-				containerRect = scrollRange.containerRect;
-				contentSize = scrollRange.contentSize;
-			}
+            let containerRect: any;
+            let contentSize: any;
+            if (option.containerRect) {
+                containerRect = option.containerRect;
+                contentSize = option.contentSize;
+            }
 
             if (containerRect) {
                 this.__containerLeft = containerRect.left;
@@ -188,50 +206,55 @@ module dv {
                 this.__contentHeight = host.scrollHeight;
             }
 
-            let trackXStyle = this._getStyle(this.__trackX);
+            const trackXStyle: CSSStyleDeclaration = this._getStyle(this.__trackX);
             this.__trackXMarginWidth = this._toInt(trackXStyle.marginLeft) + this._toInt(trackXStyle.marginRight);
             this.__trackXWidth = this.__containerWidth - this.__trackXMarginWidth;
 
-            let trackYStyle = this._getStyle(this.__trackY);
+            const trackYStyle: CSSStyleDeclaration = this._getStyle(this.__trackY);
             this.__trackYMarginHeight = this._toInt(trackYStyle.marginTop) + this._toInt(trackYStyle.marginBottom);
             this.__trackYHeight = this.__containerHeight - this.__trackYMarginHeight;
 
-            //scrollX
-            if (this.__xscroll && this.__contentWidth > this.__containerWidth) {
+            const xscroll: boolean = (option.xscroll === false ? false : true);
+            const yscroll: boolean = (option.yscroll === false ? false : true);
+            // scroll X
+            if (xscroll && this.__contentWidth > this.__containerWidth + 0.5) {
                 this.__isScrollXActive = true;
-                this.__trackXWidth =this.__containerWidth - this.__trackXMarginWidth;
+                this.__trackXWidth = this.__containerWidth - this.__trackXMarginWidth;
                 this.__thumbXWidth = this._getThumbXSize();
+                this.__scrollbar.classList.add('dv-active-x');
 
-                this.__scrollbar.classList.add('gcdv-active-x');
+                this._processXScrolled(this.__scrollLeft, 0);
             } else {
                 this.__isScrollXActive = false;
                 this.__trackXWidth = 0;
                 this.__thumbXWidth = 0;
+                this.__scrollbar.classList.remove('dv-active-x');
 
-                this.__scrollbar.classList.remove('gcdv-active-x');
+                this._processXScrolled(0, 0); // always make scrollLeft=0
             }
-            //scrollY
-            if (this.__yscroll && this.__contentHeight > this.__containerHeight) {
+            // scroll Y
+            if (yscroll && this.__contentHeight > this.__containerHeight + 0.5) {
                 this.__isScrollYActive = true;
                 this.__trackYHeight = this.__containerHeight - this.__trackYMarginHeight;
                 this.__thumbYHeight = this._getThumbYSize();
+                this.__scrollbar.classList.add('dv-active-y');
 
-                this.__scrollbar.classList.add('gcdv-active-y');
+                this._processYScrolled(this.__scrollTop, 0);
             } else {
                 this.__isScrollYActive = false;
                 this.__trackYHeight = 0;
                 this.__thumbYHeight = 0;
+                this.__scrollbar.classList.remove('dv-active-y');
 
-                this.__scrollbar.classList.remove('gcdv-active-y');
+                this._processYScrolled(0, 0); // always make scrollTop=0
             }
-
-            this._updatePosition();
         }
 
-        _updatePosition():void {
-            let host = this.__host;
+        private _updatePosition(): void {
+            const host: HTMLElement = this.__host;
+            const option: any = this.__option;
 
-            if(this.__isScrollXActive) {
+            if (this.__isScrollXActive) {
                 this.__thumbXLeft = this.__scrollLeft * (this.__trackXWidth - this.__thumbXWidth) / (this.__contentWidth - this.__containerWidth);
             } else {
                 this.__thumbXLeft = 0;
@@ -243,17 +266,19 @@ module dv {
                 this.__thumbYTop = 0;
             }
 
-            this.__thumbXLeft = Math.min( this.__thumbXLeft, this.__trackXWidth - this.__thumbXWidth);
-            this.__thumbYTop = Math.min(this.__thumbYTop,this.__trackYHeight - this.__thumbYHeight);
+            this.__thumbXLeft = Math.min(this.__thumbXLeft, this.__trackXWidth - this.__thumbXWidth);
+            this.__thumbYTop = Math.min(this.__thumbYTop, this.__trackYHeight - this.__thumbYHeight);
 
-            //update css
+            // update css
+            const trackXOffset: any = option.trackXOffset ? option.trackXOffset : 0;
+            const trackYOffset: any = option.trackYOffset ? option.trackYOffset : 0;
             this._setCss(this.__scrollbar, {
                 left: host.scrollLeft + this.__containerLeft,
                 top: host.scrollTop + this.__containerTop
             });
             this._setCss(this.__trackX, {
                 left: 0,
-                top: this.__containerHeight - this.__trackX.offsetHeight,
+                top: this.__containerHeight - this.__trackX.offsetHeight + trackXOffset,
                 width: this.__trackXWidth
             });
             this._setCss(this.__thumbX, {
@@ -261,7 +286,7 @@ module dv {
                 width: this.__thumbXWidth
             });
             this._setCss(this.__trackY, {
-                left: this.__containerWidth - this.__trackY.offsetWidth,
+                left: this.__containerWidth - this.__trackY.offsetWidth + trackYOffset,
                 top: 0,
                 height: this.__trackYHeight
             });
@@ -272,103 +297,121 @@ module dv {
         }
 
         //
-        on(type:string, fn: any) {
+        public on(type: string, fn: any): void {
             this.__event.object(this).on(type, fn);
         }
 
-        once(type: string, fn: any) { 
+        public once(type: string, fn: any): void {
             this.__event.object(this).once(type, fn);
         }
 
-        off(type: string) {
+        public off(type: string): void {
             this.__event.object(this).off(type);
         }
 
-        _fire(type:string, data: any) {
+        private _fire(type: string, data: any): void {
             this.__event.object(this).fire(type, data);
         }
 
-        //
-        _bindEvents() {
-            let event = this.__event;
+        private _bindEvents(): void {
+            const evt: EventManager = this.__event;
 
-            //size
-            event.element(window).on('resize', (e: UIEvent) => this._onWindowResize(e));
+            // size
+            evt.element(window).on('resize', (e: UIEvent) => this._onWindowResize(e));
 
-            //document keydown
-            event.element(this.__host.ownerDocument).on('keydown', (e: KeyboardEvent) => this._onDocumentKeyDown(e));
+            // document keydown
+            evt.element(this.__host.ownerDocument).on('keydown', (e: KeyboardEvent) => this._onDocumentKeyDown(e));
 
-            //host content change
-            var MutationObserver = (<any>window).MutationObserver || (<any>window).WebKitMutationObserver || (<any>window).MozMutationObserver;
+            // host content change
+            let MutationObserver: any = null;
+            if ((<any>window).MutationObserver) {
+                MutationObserver = (<any>window).MutationObserver;
+            } else if ((<any>window).WebKitMutationObserver) {
+                MutationObserver = (<any>window).WebKitMutationObserver
+            } else if ((<any>window).WebKitMutationObserver) {
+                MutationObserver = (<any>window).MozMutationObserver;
+            }
             if (MutationObserver) {
-                this.__observer = new MutationObserver( (mutations: any) => this._onHostChildrenChange(mutations));
+                this.__observer = new MutationObserver((mutations: any) => this._onHostChildrenChange(mutations));
                 this.__observer.observe(this.__host, { subtree: true, childList: true });
             }
 
-            //host
-            let hostEvent = event.element(this.__host);
+            // host
+            const hostEvent: EventElement = evt.element(this.__host);
             hostEvent.on('scroll', (e: UIEvent) => this._onHostScroll(e));
             hostEvent.on('wheel', (e: WheelEvent) => this._onHostMouseWheel(e));
             hostEvent.on(TOUCH_TYPES.TOUCH_START, (e: TouchEvent) => this._onHostTouchStart(e));
             hostEvent.on('mouseenter', (e: MouseEvent) => this._onHostMouseEnter(e));
-            hostEvent.on('mouseleave', (e:MouseEvent) => this._onHostMouseLeave(e));
-            hostEvent.on('mousemove', (e:MouseEvent) => this._onHostMouseMove(e));
+            hostEvent.on('mouseleave', (e: MouseEvent) => this._onHostMouseLeave(e));
+            hostEvent.on('mousemove', (e: MouseEvent) => this._onHostMouseMove(e));
 
-            //mouse
-            event.element(this.__trackX).on('mousedown', (e: MouseEvent) => this._onTrackXMouseDown(e));
-            event.element(this.__thumbX).on('mousedown', (e: MouseEvent) => this._onThumbXMouseDown(e));
-            event.element(this.__trackY).on('mousedown', (e: MouseEvent) => this._onTrackYMouseDown(e));
-            event.element(this.__thumbY).on('mousedown', (e: MouseEvent) => this._onThumbYMouseDown(e));
+            // mouse
+            evt.element(this.__trackX).on('mousedown', (e: MouseEvent) => this._onTrackXMouseDown(e));
+            evt.element(this.__thumbX).on('mousedown', (e: MouseEvent) => this._onThumbXMouseDown(e));
+            evt.element(this.__trackY).on('mousedown', (e: MouseEvent) => this._onTrackYMouseDown(e));
+            evt.element(this.__thumbY).on('mousedown', (e: MouseEvent) => this._onThumbYMouseDown(e));
+
+            evt.element(this.__scrollbar).on('click mousemove', (e: MouseEvent) => this._cancelEvent(e));
         }
 
-        _onHostChildrenChange(mutations: any) {
+        private _onHostChildrenChange(mutations: any): void {
             this.update();
         }
 
-        _onWindowResize(evt: UIEvent) {
+        private _onWindowResize(event: UIEvent): void {
             this.update();
         }
-        
-        _onDocumentKeyDown(evt: KeyboardEvent) {
-            if (((<any>evt).isDefaultPrevented && (<any>evt).isDefaultPrevented()) || evt.defaultPrevented) {
+
+        private _onDocumentKeyDown(event: KeyboardEvent): void {
+            if (((<any>event).isDefaultPrevented && (<any>event).isDefaultPrevented()) || event.defaultPrevented) {
                 return;
             }
-    
-            const eMatches = Element && (Element.prototype.matches || Element.prototype.webkitMatchesSelector); 
-            let scrollbarFocused = eMatches.call(this.__thumbX, ':focus') || eMatches.call(this.__thumbY, ':focus');
-            let hostHovered = this.__scrollbar.classList.contains('gcdv-hover');
-            if(!hostHovered && !scrollbarFocused) { 
+
+            let eMatches: ElementMatchesCallback = null;
+            if (Element) {
+                if (Element.prototype.matches) {
+                    eMatches = Element.prototype.matches;
+                } else if (Element.prototype.webkitMatchesSelector) {
+                    eMatches = Element.prototype.webkitMatchesSelector;
+                } else if (Element.prototype.msMatchesSelector) {
+                    eMatches = Element.prototype.msMatchesSelector;
+                }
+            }
+
+            const scrollbarFocused: any = eMatches.call(this.__thumbX, ':focus') ? eMatches.call(this.__thumbX, ':focus') : eMatches.call(this.__thumbY, ':focus');
+            const hostHovered: boolean = this.__scrollbar.classList.contains('dv-hover');
+            if (!hostHovered && !scrollbarFocused) {
                 return;
             }
-            
-            let activeElement = document.activeElement || this.__host.ownerDocument.activeElement;
+
+            let activeElement: Element = document.activeElement ? document.activeElement : this.__host.ownerDocument.activeElement;
             if (activeElement) {
-                if(activeElement.tagName === 'IFRAME') {
+                if (activeElement.tagName === 'IFRAME') {
                     activeElement = (<HTMLFrameElement>activeElement).contentDocument.activeElement;
                 }
-    
-                if (eMatches.call(activeElement, 'input,[contenteditable]') 
-                 || eMatches.call(activeElement, 'select,[contenteditable]') 
-                 || eMatches.call(activeElement, 'textarea,[contenteditable]') 
-                 || eMatches.call(activeElement, 'button,[contenteditable]')) {
+
+                if (eMatches.call(activeElement, 'input,[contenteditable]')
+                    || eMatches.call(activeElement, 'select,[contenteditable]')
+                    || eMatches.call(activeElement, 'textarea,[contenteditable]')
+                    || eMatches.call(activeElement, 'button,[contenteditable]')) {
                     return;
                 }
             }
-    
-            let deltaX = 0;
-            let deltaY = 0;
-    
-            switch (evt.which) {
-                case 37: //left:
+
+            let deltaX: number = 0;
+            let deltaY: number = 0;
+
+            switch (event.which) {
+                case 37: // left:
                     deltaX = -40;
                     break;
-                case 39: //right
+                case 39: // right
                     deltaX = 40;
                     break;
-                case 38: //up
+                case 38: // up
                     deltaY = 40;
                     break;
-                case 40: //down
+                case 40: // down
                     deltaY = -40;
                     break;
                 case 33: // page up
@@ -386,11 +429,11 @@ module dv {
                 default:
                     return;
             }
-    
-            let newScrollTop = this.__scrollTop - deltaY;
-            let newScrollLeft = this.__scrollLeft + deltaX;
-    
-            let shouldPreventDefault = false;
+
+            const newScrollTop: number = this.__scrollTop - deltaY;
+            const newScrollLeft: number = this.__scrollLeft + deltaX;
+
+            let shouldPreventDefault: boolean = false;
             if (this.__isScrollYActive) {
                 this._processYScrolled(newScrollTop);
                 shouldPreventDefault = true;
@@ -399,15 +442,12 @@ module dv {
                 shouldPreventDefault = true;
             }
             if (shouldPreventDefault) {
-                evt.preventDefault();
-                evt.stopPropagation();
+                this._cancelEvent(event);
             }
-    
-            this._updatePosition();
         }
 
-        _onHostScroll(evt: UIEvent) {
-            let host = this.__host;
+        private _onHostScroll(event: UIEvent): void {
+            const host: HTMLElement = this.__host;
             if (!this._isRangeScroll()) {
                 this.__scrollTop = host.scrollTop;
                 this.__scrollLeft = host.scrollLeft;
@@ -416,41 +456,43 @@ module dv {
             this._updatePosition();
         }
 
-        _onHostMouseEnter(evt: MouseEvent) {
-            if(!this._isRangeScroll()) {
-                this.__scrollbar.classList.add('gcdv-hover');
+        private _onHostMouseEnter(event: MouseEvent): void {
+            if (!this._isRangeScroll()) {
+                this.__scrollbar.classList.add('dv-hover');
                 this._updatePosition();
             }
         }
 
-        _onHostMouseLeave(evt: MouseEvent) {
-            this.__scrollbar.classList.remove('gcdv-hover');
+        private _onHostMouseLeave(event: MouseEvent): void {
+            this.__scrollbar.classList.remove('dv-hover');
             this._updatePosition();
         }
 
-        _onHostMouseMove(evt: MouseEvent) {
-            if(this._isRangeScroll()) {
-                if(this._mouseInContainer(evt)) {
-                    this.__scrollbar.classList.add('gcdv-hover');
+        private _onHostMouseMove(event: MouseEvent): void {
+            if (this._isRangeScroll()) {
+                if (this._mouseInContainer(event)) {
+                    this.__scrollbar.classList.add('dv-hover');
                 } else {
-                    this.__scrollbar.classList.remove('gcdv-hover');
+                    this.__scrollbar.classList.remove('dv-hover');
                 }
 
                 this._updatePosition();
             }
         }
 
-        _onHostMouseWheel(evt: WheelEvent) {
-            if (!this._mouseInContainer(evt)) {
+        private _onHostMouseWheel(event: WheelEvent): void {
+            if (!this._mouseInContainer(event)) {
                 return;
             }
 
-            let [deltaX, deltaY] = this._getWheelDelte(evt);
+            const wheelDelta: { deltaX: number, deltaY: number } = this._getWheelDelte(event);
+            const deltaX: number = wheelDelta.deltaX;
+            const deltaY: number = wheelDelta.deltaY;
 
-            let newScrollTop = this.__scrollTop - deltaY;
-            let newScrollLeft = this.__scrollLeft + deltaX;
+            const newScrollTop: number = this.__scrollTop - deltaY;
+            const newScrollLeft: number = this.__scrollLeft + deltaX;
 
-            let shouldPreventDefault = false;
+            let shouldPreventDefault: boolean = false;
 
             if (this.__isScrollYActive && deltaY !== 0) {
                 this._processYScrolled(newScrollTop);
@@ -460,19 +502,16 @@ module dv {
                 shouldPreventDefault = true;
             }
 
-            this._updatePosition();
-
             if (shouldPreventDefault) {
-                evt.preventDefault();
-                evt.stopPropagation();
+                this._cancelEvent(event);
             }
         }
 
-        _getWheelDelte(orgEvent: WheelEvent) {
-            let deltaX = 0;
-            let deltaY = 0;
+        private _getWheelDelte(orgEvent: WheelEvent): { deltaX: number, deltaY: number } {
+            let deltaX: number = 0;
+            let deltaY: number = 0;
 
-            // // Old school scrollwheel delta
+            // Old school scrollwheel delta
             // if ('detail' in orgEvent) {
             //     deltaY = orgEvent.detail * -1;
             // }
@@ -487,10 +526,10 @@ module dv {
             // }
 
             // New school wheel delta (wheel event)
-            if ('deltaY' in orgEvent) {
+            if (_Util.hasProperty(orgEvent, 'deltaY')) {
                 deltaY = orgEvent.deltaY * -1;
             }
-            if ('deltaX' in orgEvent) {
+            if (_Util.hasProperty(orgEvent, 'deltaX')) {
                 deltaX = orgEvent.deltaX;
             }
 
@@ -506,89 +545,106 @@ module dv {
                 //
             }
 
-            return [deltaX, deltaY];
+            return { deltaX: deltaX, deltaY: deltaY };
         }
 
-        _mouseInContainer(evt: MouseEvent) {
+        private _mouseInContainer(event: MouseEvent): boolean {
             if (this._isRangeScroll()) {
-                let hostRect = this.__host.getBoundingClientRect();
+                const hostRect: ClientRect | DOMRect = this.__host.getBoundingClientRect();
 
-            let evtX = evt.pageX - hostRect.left;
-            let evtY = evt.pageY - hostRect.top;
-            if ((this.__containerLeft <= evtX && evtX < this.__containerLeft + this.__containerWidth) && 
-                (this.__containerTop <= evtY && evtY < this.__containerTop + this.__containerHeight)) {
-                return true;
-            }
-            return false;
+                const option: any = this.__option;
+                const trackXOffset: any = option.trackXOffset ? option.trackXOffset : 0;
+                const trackYOffset: any = option.trackYOffset ? option.trackYOffset : 0;
+
+                const evtX: number = event.pageX - hostRect.left;
+                const evtY: number = event.pageY - hostRect.top;
+                if ((this.__containerLeft <= evtX && evtX < this.__containerLeft + this.__containerWidth + trackYOffset) &&
+                    (this.__containerTop <= evtY && evtY < this.__containerTop + this.__containerHeight + trackXOffset)) {
+                    return true;
+                }
+                return false;
             }
             return true;
         }
 
-        _onHostTouchStart(evt: TouchEvent) {
-            if (!this._shouldHandleTouch(evt)) {
-                return;
-            }
+        private _onHostTouchStart(event: TouchEvent): void {
+            const self: Scrollbar = this;
 
-            let self = this;
-            let startOffset: any = {};
-            let startTime: number = 0;
-            let speed: any = {};
-            
-            let touch: any = evt.targetTouches ? evt.targetTouches[0]: evt;
-
-            startOffset.pageX = touch.pageX;
-            startOffset.pageY = touch.pageY;
-        
-            startTime = new Date().getTime();
-        
             if (self.__touchIntervalId) {
                 clearInterval(self.__touchIntervalId);
             }
 
             //
-            let hostEvent = self.__event.element(self.__host);
+            if (!this.__isScrollXActive && !this.__isScrollYActive) {
+                return;
+            }
+            if (!this._shouldHandleTouch(event)) {
+                return;
+            }
+
+            const touch: any = event.targetTouches ? event.targetTouches[0] : event;
+            if (!this._mouseInContainer(touch)) {
+                return;
+            }
+
+            //
+            let startOffset: any = {};
+            let startTime: number = new Date().getTime();
+            const speed: any = {};
+
+            startOffset.pageX = touch.pageX;
+            startOffset.pageY = touch.pageY;
+
+            //
+            const hostEvent: EventElement = self.__event.element(self.__host);
             //
             hostEvent.off(TOUCH_TYPES.TOUCH_MOVE);
             hostEvent.on(TOUCH_TYPES.TOUCH_MOVE, touchMoveHandler);
-            function touchMoveHandler(e:TouchEvent) {
-                if (!self._shouldHandleTouch(e)) { 
+            function touchMoveHandler(e: TouchEvent): void {
+                if (!self._shouldHandleTouch(e)) {
                     return;
                 }
-                let touch: any = e.targetTouches ? e.targetTouches[0]: e;
+                const touch1: any = e.targetTouches ? e.targetTouches[0] : e;
 
-                let currentOffset = { pageX: touch.pageX, pageY: touch.pageY };
-            
-                let differenceX = currentOffset.pageX - startOffset.pageX;
-                let differenceY = currentOffset.pageY - startOffset.pageY;
-                
-                let newScrollTop = self.__scrollTop - differenceY;
-                let newScrollLeft = self.__scrollLeft - differenceX;
-                self._processYScrolled(newScrollTop);
-                self._processXScrolled(newScrollLeft);
-                self._updatePosition();
-            
+                const currentOffset: { pageX: number, pageY: number } = { pageX: touch1.pageX, pageY: touch1.pageY };
+
+                const differenceX: number = currentOffset.pageX - startOffset.pageX;
+                const differenceY: number = currentOffset.pageY - startOffset.pageY;
+
+                const newScrollTop: number = self.__scrollTop - differenceY;
+                const newScrollLeft: number = self.__scrollLeft - differenceX;
+
+                let shouldPreventDefault: boolean = false;
+                if (self.__isScrollYActive) {
+                    self._processYScrolled(newScrollTop);
+                    shouldPreventDefault = true;
+                } else if (self.__isScrollXActive) {
+                    self._processXScrolled(newScrollLeft);
+                    shouldPreventDefault = true;
+                }
+                if (shouldPreventDefault) {
+                    self._cancelEvent(e);
+                }
+
                 startOffset = currentOffset;
-            
-                let currentTime = new Date().getTime();
-                let timeGap = currentTime - startTime;
+
+                const currentTime: number = new Date().getTime();
+                const timeGap: number = currentTime - startTime;
                 if (timeGap > 0) {
                     speed.x = differenceX / timeGap;
                     speed.y = differenceY / timeGap;
                     startTime = currentTime;
                 }
-                
-                e.preventDefault();
-                e.stopPropagation();
             }
             //
             hostEvent.off(TOUCH_TYPES.TOUCH_END);
             hostEvent.on(TOUCH_TYPES.TOUCH_END, touchEndHandler);
-            function touchEndHandler(e: TouchEvent) {
+            function touchEndHandler(e: TouchEvent): void {
                 hostEvent.off(TOUCH_TYPES.TOUCH_MOVE);
                 hostEvent.off(TOUCH_TYPES.TOUCH_END);
 
                 clearInterval(self.__touchIntervalId);
-                self.__touchIntervalId = setInterval(function() {
+                self.__touchIntervalId = setInterval((): void => {
                     if (!speed.x && !speed.y) {
                         clearInterval(self.__touchIntervalId);
                         return;
@@ -599,11 +655,14 @@ module dv {
                         return;
                     }
 
-                    let newScrollTop = self.__scrollTop - speed.y * 30;
-                    let newScrollLeft = self.__scrollLeft - speed.x * 30;
-                    self._processYScrolled(newScrollTop);
-                    self._processXScrolled(newScrollLeft);
-                    self._updatePosition();
+                    const newScrollTop: number = self.__scrollTop - speed.y * 30;
+                    const newScrollLeft: number = self.__scrollLeft - speed.x * 30;
+
+                    if (self.__isScrollYActive) {
+                        self._processYScrolled(newScrollTop);
+                    } else if (self.__isScrollXActive) {
+                        self._processXScrolled(newScrollLeft);
+                    }
 
                     speed.x *= 0.8;
                     speed.y *= 0.8;
@@ -611,162 +670,191 @@ module dv {
             }
         }
 
-        _shouldHandleTouch(evt: any) {
-            if (evt.pointerType && evt.pointerType === 'pen' && evt.buttons === 0) {
-            return false;
+        private _shouldHandleTouch(event: any): boolean {
+            if (event.pointerType && event.pointerType === 'pen' && event.buttons === 0) {
+                return false;
             }
-            if (evt.targetTouches && evt.targetTouches.length === 1) {
-            return true;
+            if (event.targetTouches && event.targetTouches.length === 1) {
+                return true;
             }
-            if (evt.pointerType && evt.pointerType !== 'mouse' && evt.pointerType !== evt.MSPOINTER_TYPE_MOUSE) {
-            return true;
+            if (event.pointerType && event.pointerType !== 'mouse' && event.pointerType !== event.MSPOINTER_TYPE_MOUSE) {
+                return true;
             }
             return false;
         }
 
-        _onTrackXMouseDown(evt: MouseEvent) {
-            let thumbXRect = this.__thumbX.getBoundingClientRect();
-            let evtX = evt.pageX - window.pageXOffset;
+        private _onTrackXMouseDown(event: MouseEvent): void {
+            const thumbXRect: ClientRect | DOMRect = this.__thumbX.getBoundingClientRect();
+            const evtX: number = event.pageX - window.pageXOffset;
 
-            let direction = evtX < thumbXRect.left ? -1 : 1;
-            let newScrollLeft = this.__scrollLeft + direction * this.__containerWidth;
+            const direction: number = evtX < thumbXRect.left ? -1 : 1;
+            const newScrollLeft: number = this.__scrollLeft + direction * this.__containerWidth;
 
             this._processXScrolled(newScrollLeft);
-            this._updatePosition();
 
-            evt.preventDefault();
-            evt.stopPropagation();
+            this._cancelEvent(event);
         }
 
-        _onThumbXMouseDown(evt: MouseEvent) {
-            let self = this;
-            let startScrollLeft = self.__scrollLeft;
-            let startPageX = evt.pageX;
-            let scrollBy = (self.__contentWidth - self.__containerWidth) / (self.__trackXWidth - self.__thumbXWidth);
+        private _onThumbXMouseDown(event: MouseEvent): void {
+            const self: Scrollbar = this;
+            const startScrollLeft: number = self.__scrollLeft;
+            const startPageX: number = event.pageX;
+            const scrollBy: number = (self.__contentWidth - self.__containerWidth) / (self.__trackXWidth - self.__thumbXWidth);
 
             //
-            let doc: any = self.__host.ownerDocument;
-            let docEvent = self.__event.element(doc);
-            docEvent.on("mousemove", mouseMoveHandler);
-            function mouseMoveHandler(e: MouseEvent) {
-                let newScrollLeft = startScrollLeft + scrollBy * (e.pageX - startPageX);
+            const doc: any = self.__host.ownerDocument;
+            const docEvent: EventElement = self.__event.element(doc);
+            docEvent.on('mousemove', mouseMoveHandler, true);
+            function mouseMoveHandler(e: MouseEvent): void {
+                const newScrollLeft: number = startScrollLeft + scrollBy * (e.pageX - startPageX);
                 self._processXScrolled(newScrollLeft);
-                self.__scrollbar.classList.add('gcdv-scrolling-x');
-                self._updatePosition();
+                self.__scrollbar.classList.add('dv-scrolling-x');
 
-                e.preventDefault();
-                e.stopPropagation();
+                self._cancelEvent(e);
             }
-            docEvent.on("mouseup", mouseUpHandler);
-            function mouseUpHandler() {
+            docEvent.on('mouseup', mouseUpHandler, true);
+            function mouseUpHandler(): void {
                 self.__event.off(doc);
 
-                self.__scrollbar.classList.remove('gcdv-scrolling-x');
+                self.__scrollbar.classList.remove('dv-scrolling-x');
                 self._updatePosition();
             }
 
-            evt.preventDefault();
-            evt.stopPropagation();
+            self._cancelEvent(event);
         }
 
-        _onTrackYMouseDown(evt: MouseEvent) {
-            let thumbYRect = this.__thumbY.getBoundingClientRect();
-            let evtY = evt.pageY - window.pageYOffset;
+        private _onTrackYMouseDown(event: MouseEvent): void {
+            const thumbYRect: ClientRect | DOMRect = this.__thumbY.getBoundingClientRect();
+            const evtY: number = event.pageY - window.pageYOffset;
 
-            let direction = evtY < thumbYRect.top ? -1 : 1;
-            let newScrollTop = this.__scrollTop + direction * this.__containerHeight;
+            const direction: number = evtY < thumbYRect.top ? -1 : 1;
+            const newScrollTop: number = this.__scrollTop + direction * this.__containerHeight;
 
             this._processYScrolled(newScrollTop);
-            this._updatePosition();
 
-            evt.preventDefault();
-            evt.stopPropagation();
+            this._cancelEvent(event);
         }
 
-        _onThumbYMouseDown(evt: MouseEvent) {
-            let self = this;
-            let startScrollTop = self.__scrollTop;
-            let startPageY = evt.pageY;
-            let scrollBy = (self.__contentHeight - self.__containerHeight) / (self.__trackYHeight - self.__thumbYHeight);
+        private _onThumbYMouseDown(event: MouseEvent): void {
+            const self: Scrollbar = this;
+            const startScrollTop: number = self.__scrollTop;
+            const startPageY: number = event.pageY;
+            const scrollBy: number = (self.__contentHeight - self.__containerHeight) / (self.__trackYHeight - self.__thumbYHeight);
 
             //
-            let doc:any = self.__host.ownerDocument;
-            let docEvent = self.__event.element(doc);
-            docEvent.on('mousemove', mouseMoveHandler);
-            function mouseMoveHandler(e: MouseEvent) {
-                let newScrollTop = startScrollTop + scrollBy * (e.pageY - startPageY);
+            const doc: any = self.__host.ownerDocument;
+            const docEvent: EventElement = self.__event.element(doc);
+            docEvent.on('mousemove', mouseMoveHandler, true);
+            function mouseMoveHandler(e: MouseEvent): void {
+                const newScrollTop: number = startScrollTop + scrollBy * (e.pageY - startPageY);
                 self._processYScrolled(newScrollTop);
-                self.__scrollbar.classList.add('gcdv-scrolling-y');
-                self._updatePosition();
+                self.__scrollbar.classList.add('dv-scrolling-y');
 
-                e.preventDefault();
-                e.stopPropagation();
+                self._cancelEvent(e);
             }
-            docEvent.on('mouseup', mouseUpHandler);
-            function mouseUpHandler() {
+            docEvent.on('mouseup', mouseUpHandler, true);
+            function mouseUpHandler(): void {
                 self.__event.off(doc);
 
-                self.__scrollbar.classList.remove('gcdv-scrolling-y');
+                self.__scrollbar.classList.remove('dv-scrolling-y');
                 self._updatePosition();
             }
 
-            evt.preventDefault();
-            evt.stopPropagation();
+            self._cancelEvent(event);
+        }
+
+        private _cancelEvent(event: MouseEvent | KeyboardEvent | TouchEvent): void {
+            event.preventDefault();
+            event.stopPropagation();
         }
 
         //
-        _processXScrolled(newScrollLeft: number): void {
-            newScrollLeft = Math.max(0, Math.min(newScrollLeft, this.__contentWidth - this.__containerWidth));
+        private _processXScrolled(newScrollLeft: number, delay: number = 10): void {
+            const self: Scrollbar = this;
+            if (self.__scrollXTimeoutId) {
+                window.clearTimeout(self.__scrollXTimeoutId);
+            }
 
-            let diff = this.__scrollLeft - newScrollLeft;
-            if (diff) {
-                let oldScrollLeft = this.__scrollLeft;
-                this.__scrollLeft = newScrollLeft;
-                if (!this._isRangeScroll()) {
-                    this.__host.scrollLeft = newScrollLeft;
+            if (delay == 0) {
+                scroll();
+            } else {
+                self.__scrollXTimeoutId = window.setTimeout(() => {
+                    scroll();
+                }, delay);
+            }
+
+            function scroll(): void {
+                newScrollLeft = Math.max(0, Math.min(newScrollLeft, self.__contentWidth - self.__containerWidth));
+                const diff: number = self.__scrollLeft - newScrollLeft;
+                if (diff) {
+                    const oldScrollLeft: number = self.__scrollLeft;
+                    self.__scrollLeft = newScrollLeft;
+                    if (!self._isRangeScroll()) {
+                        self.__host.scrollLeft = newScrollLeft;
+                    }
+                    self._fire(Scrollbar.__scrolled, {
+                        scrollOrientation: ScrollOrientation.HorizontalScroll,
+                        newValue: self.__scrollLeft,
+                        oldValue: oldScrollLeft
+                    });
                 }
-                this._fire(SCROLLBAR_EVENTS.SCROLLED, {
-                    scrollOrientation: ScrollOrientation.HorizontalScroll,
-                    newValue: this.__scrollLeft,
-                    oldValue: oldScrollLeft
-                });
+
+                self._updatePosition();
+                self.__scrollXTimeoutId = null;
             }
         }
 
-        _processYScrolled(newScrollTop:number): void {
-            newScrollTop = Math.max(0, Math.min(newScrollTop, this.__contentHeight - this.__containerHeight));
+        private _processYScrolled(newScrollTop: number, delay: number = 10): void {
+            const self: Scrollbar = this;
+            if (self.__scrollYTimeoutId) {
+                window.clearTimeout(self.__scrollYTimeoutId);
+            }
 
-            let diff = this.__scrollTop - newScrollTop;
-            if (diff) {
-                let oldScrollTop = this.__scrollTop;
-                this.__scrollTop = newScrollTop;
+            if (delay == 0) {
+                scroll();
+            } else {
+                self.__scrollYTimeoutId = window.setTimeout(() => {
+                    scroll();
+                }, delay);
+            }
 
-                if (!this._isRangeScroll()) {
-                    this.__host.scrollTop = newScrollTop;
+            function scroll(): void {
+                newScrollTop = Math.max(0, Math.min(newScrollTop, self.__contentHeight - self.__containerHeight));
+                const diff: number = self.__scrollTop - newScrollTop;
+                if (diff) {
+                    const oldScrollTop: number = self.__scrollTop;
+                    self.__scrollTop = newScrollTop;
+
+                    if (!self._isRangeScroll()) {
+                        self.__host.scrollTop = newScrollTop;
+                    }
+
+                    self._fire(Scrollbar.__scrolled, {
+                        scrollOrientation: ScrollOrientation.VerticalScroll,
+                        newValue: self.__scrollTop,
+                        oldValue: oldScrollTop
+                    });
                 }
 
-                this._fire(SCROLLBAR_EVENTS.SCROLLED, {
-                    scrollOrientation: ScrollOrientation.VerticalScroll,
-                    newValue: this.__scrollTop,
-                    oldValue: oldScrollTop
-                });
+                self._updatePosition();
+                self.__scrollYTimeoutId = null;
             }
         }
 
         //
-        _getThumbXSize(): number {
+        private _getThumbXSize(): number {
             return this.__trackXWidth * this.__containerWidth / this.__contentWidth;
         }
 
-        _getThumbYSize(): number {
+        private _getThumbYSize(): number {
             return (
                 this.__trackYHeight * this.__containerHeight / this.__contentHeight
             );
         }
 
         //
-        _createElement(tag: string, className: string, style?: any): HTMLElement {
-            let element = document.createElement(tag);
+        private _createElement(tag: string, className: string, style?: any): HTMLElement {
+            const element: HTMLElement = document.createElement(tag);
             element.className = className;
             if (style) {
                 this._setCss(element, style);
@@ -775,37 +863,45 @@ module dv {
             return element;
         }
 
-        _getStyle(element: HTMLElement): CSSStyleDeclaration {
+        private _getStyle(element: HTMLElement): CSSStyleDeclaration {
             return getComputedStyle(element);
         }
 
-        _getCss(element: HTMLElement, propertyName:any):string {
+        private _getCss(element: HTMLElement, propertyName: any): string {
             return this._getStyle(element)[propertyName];
         }
 
-        _setCss(element: HTMLElement, properties: any): void {
-            for (let key in properties) {
-                let v = properties[key];
-                if (typeof v === "number") {
+        private _setCss(element: HTMLElement, properties: any): void {
+            const props: string[] = _Util.properties(properties, false);
+            for (const key of props) {
+                let v: any = properties[key];
+                if (typeof v === 'number') {
                     v = v + 'px';
                 }
                 element.style[<any>key] = v;
             }
         }
-        
+
         //
-        _isRangeScroll() : boolean {
-            return  !!(this.__options.scrollRange);
+        private _isRangeScroll(): boolean {
+            return !!(this.__option.containerRect);
         }
-        _toInt(v:string): number {
+        private _toInt(v: string): number {
             return parseInt(v, 10) || 0;
         }
+        private _extend(target: any, src: any): any {
+            const props: string[] = _Util.properties(src);
+            for (const p of props) {
+                if (src.hasOwnProperty(p)) {
+                    target[p] = src[p]
+                };
+            };
+            return target;
+        }
     }
-    //#endregion
 
 
-    //#region EventObject
-     /**
+    /**
      * @hidden
      * Represents an object's event.
      */
@@ -822,23 +918,24 @@ module dv {
             return this.__context;
         }
 
-        on(type: string, fn: any) {
+        on(type: string, fn: any): void {
             this._bind(type, fn, false);
         }
-        once(type: string, fn: any) {
+        once(type: string, fn: any): void {
             this._bind(type, fn, true);
         }
-        off(type: any) {
-            let events = this.__events;
+        off(type: any): void {
+            const events: any = this.__events;
 
             if (!type) {
                 this.__events = {};
-            } else if (typeof type === "string") {
+            } else if (typeof type === 'string') {
                 delete events[type];
-            } else if (typeof type === "function") {
-                for (let t in events) {
-                    let fns = events[t] || [];
-                    for (let i = 0; i < fns.length; i++) {
+            } else if (typeof type === 'function') {
+                const props: string[] = _Util.properties(events, false);
+                for (const t of props) {
+                    const fns: any = events[t] ? events[t] : [];
+                    for (let i: number = 0; i < fns.length; i++) {
                         if (fns[i][0] === type) {
                             fns.splice(i--, 1);
                         }
@@ -846,24 +943,24 @@ module dv {
                 }
             }
         }
-        fire(type: string, ...args: any[]) {
-            let fns = this.__events[type];
+        fire(type: string, ...args: any[]): void {
+            const fns: any = this.__events[type];
             if (!fns || fns.length === 0) {
                 return;
             }
 
-            for (let i = 0; i < fns.length; i++) {
-                let fn = fns[i];
+            for (let i: number = 0; i < fns.length; i++) {
+                const fn: any = fns[i];
                 fn[0].apply(this.__context, args);
                 if (fn[1]) {
-                    //once
+                    // once
                     fns.splice(i--, i);
                 }
             }
         }
 
-        _bind(type: string, fn: any, once: boolean) {
-            if (typeof type !== "string" || typeof fn !== "function") {
+        _bind(type: string, fn: any, once: boolean): void {
+            if (typeof type !== 'string' || typeof fn !== 'function') {
                 return;
             }
 
@@ -873,19 +970,16 @@ module dv {
             this.__events[type].push([fn, once]);
         }
     }
-    //#endregion
-
-    //#region EventElement
 
     /**
      * @hidden
      * Represents html element's event.
      */
-    class EventElement {
+    export class EventElement {
         private __element: HTMLElement | Window | Document;
         private __events: any;
 
-        constructor(element:  HTMLElement | Window | Document) {
+        constructor(element: HTMLElement | Window | Document) {
             this.__element = element;
             this.__events = {};
         }
@@ -894,40 +988,47 @@ module dv {
             return this.__element;
         }
 
-        on(type: string, fn: any) {
+        on(type: string | string[], fn: any, capture?: boolean): void {
             if (typeof type !== 'string' || typeof fn !== 'function') {
                 return;
             }
 
-            if (!this.__events[type]) {
-                this.__events[type] = [];
+            capture = !!capture;
+            const types: string[] = type.split(' ').filter((t) => t !== '');
+            for (let i: number = 0; i < types.length; i++) {
+                const t: string = types[i];
+                if (!this.__events[t]) {
+                    this.__events[t] = [];
+                }
+                this.__events[t].push({ fn: fn, capture: capture });
+                this.__element.addEventListener(t, fn, capture);
             }
-            this.__events[type].push(fn);
-            this.__element.addEventListener(type, fn, false);
         }
-        off(type: any) {
-            let events = this.__events;
+        off(type: any): void {
+            const events: any = this.__events;
 
             if (!type) {
-                for (let t in events) {
-                    let fns = events[t] || [];
-                    for (let i = 0; i < fns.length; i++) {
-                        this.__element.removeEventListener(t, fns[i], false);
+                const props: string[] = _Util.properties(events, false);
+                for (const t of props) {
+                    const fns: any = events[t] ? events[t] : [];
+                    for (let i: number = 0; i < fns.length; i++) {
+                        this.__element.removeEventListener(t, fns[i].fn, fns[i].capture);
                     }
                 }
                 this.__events = {};
             } else if (typeof type === 'string') {
-                let fns = events[type] || [];
-                for (let i = 0; i < fns.length; i++) {
-                    this.__element.removeEventListener(type, fns[i], false);
+                const fns: any = events[type] ? events[type] : [];
+                for (let i: number = 0; i < fns.length; i++) {
+                    this.__element.removeEventListener(type, fns[i].fn, fns[i].capture);
                 }
                 delete events[type];
             } else if (typeof type === 'function') {
-                for (let t in events) {
-                    let fns = events[t] || [];
-                    for (let i = 0; i < fns.length; i++) {
+                const props: string[] = _Util.properties(events, false);
+                for (const t of props) {
+                    const fns: any = events[t] ? events[t] : [];
+                    for (let i: number = 0; i < fns.length; i++) {
                         if (fns[i] === type) {
-                            this.__element.removeEventListener(t, fns[i], false);
+                            this.__element.removeEventListener(t, fns[i].fn, fns[i].capture);
                             fns.splice(i--, 1);
                         }
                     }
@@ -936,53 +1037,50 @@ module dv {
         }
     }
 
-    //#endregion
-
-    //#region  Event
     /**
      * @hidden
      * Represents a customer event.
      */
-    class Event {
+    export class EventManager {
         private __events: any[];
         constructor() {
             this.__events = [];
         }
 
         element(element: HTMLElement | Window | Document): EventElement {
-            let event = this.__events.filter(item => item.context() === element)[0];
-            if (!event) {
-                event = new EventElement(element);
-                this.__events.push(event);
+            let evt: any = this.__events.filter((item) => item.context() === element)[0];
+            if (!evt) {
+                evt = new EventElement(element);
+                this.__events.push(evt);
             }
-            return event;
+            return evt;
         }
         object(obj: any): EventObject {
-            let event = this.__events.filter(item => item.context() === obj)[0];
-            if (!event) {
-                event = new EventObject(obj);
-                this.__events.push(event);
+            let evt: any = this.__events.filter((item) => item.context() === obj)[0];
+            if (!evt) {
+                evt = new EventObject(obj);
+                this.__events.push(evt);
             }
-            return event;
+            return evt;
         }
 
-        off(context?: any) {
-            let events = this.__events;
+        off(context?: any): void {
+            const events: any[] = this.__events;
 
             if (context) {
-                for (let i = 0; i < events.length; i++) {
+                for (let i: number = 0; i < events.length; i++) {
                     if (events[i].context() === context) {
                         events[i].off();
                         events.splice(i--, 1);
                     }
                 }
             } else {
-                for (let i = 0; i < events.length; i++) {
+                for (let i: number = 0; i < events.length; i++) {
                     events[i].off();
                 }
                 this.__events = [];
             }
         }
     }
-    //#endregion
+
 }
